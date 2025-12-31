@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时心率监测系统</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>实时心率监测系统</h1>
+            <p>使用摄像头进行人脸识别和心率检测</p>
+        </header>
+
+        <nav class="nav">
+            <a href="index.html" class="nav-link active">心率测量</a>
+            <a href="history.html" class="nav-link">历史数据</a>
+        </nav>
+
+        <main>
+            <div class="camera-section">
+                <div class="camera-container">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                    <div class="overlay">
+                        <div id="face-detection" class="face-detection"></div>
+                    </div>
+                </div>
+                <div class="controls">
+                    <button id="start-btn" class="btn btn-primary">开始监测</button>
+                    <button id="stop-btn" class="btn btn-secondary" disabled>停止监测</button>
+                    <button id="save-btn" class="btn btn-success">保存数据</button>
+                </div>
+            </div>
+
+            <div class="results-section">
+                <div class="heart-rate-display">
+                    <h2>当前心率</h2>
+                    <div id="heart-rate" class="heart-rate">--</div>
+                    <div id="heart-rate-unit" class="heart-rate-unit">BPM</div>
+                    <div id="status" class="status">等待开始...</div>
+                </div>
+
+                <div class="signal-section">
+                    <h3>心率信号</h3>
+                    <canvas id="signal-chart" width="300" height="100"></canvas>
+                </div>
+
+                <div class="stats-section">
+                    <h3>统计信息</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">平均心率</span>
+                            <span id="avg-hr" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">最高心率</span>
+                            <span id="max-hr" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">最低心率</span>
+                            <span id="min-hr" class="stat-value">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">检测到的人脸数</span>
+                            <span id="face-count" class="stat-value">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+        </main>
+
+        <footer>
+            <p>&copy; 2025 实时心率监测系统 | 基于人脸识别和rPPG技术</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/camera.js"></script>
+    <script src="js/websocket.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

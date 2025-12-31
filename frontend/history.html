@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>历史心率数据 - 实时心率监测系统</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>实时心率监测系统</h1>
+            <p>历史心率数据</p>
+        </header>
+
+        <nav class="nav">
+            <a href="index.html" class="nav-link">心率测量</a>
+            <a href="history.html" class="nav-link active">历史数据</a>
+        </nav>
+
+        <main>
+            <div class="history-section">
+                <h2>历史心率数据</h2>
+                <div id="history-list" class="history-list">
+                    <p>暂无历史数据</p>
+                </div>
+            </div>
+
+            <div class="stats-section">
+                <h3>统计信息</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">平均心率</span>
+                        <span id="avg-hr" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">最高心率</span>
+                        <span id="max-hr" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">最低心率</span>
+                        <span id="min-hr" class="stat-value">--</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">记录总数</span>
+                        <span id="record-count" class="stat-value">0</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2025 实时心率监测系统 | 基于人脸识别和rPPG技术</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Files -->
+    <script src="js/ui.js"></script>
+    <script src="js/history.js"></script>
+</body>
+</html>
