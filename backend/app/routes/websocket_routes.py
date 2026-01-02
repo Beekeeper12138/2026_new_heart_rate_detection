@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import numpy as np
 from app.services.websocket import ConnectionManager
 from app.services.face_recognition import FaceRecognitionService
 from app.services.rppg import RPPGService
@@ -38,15 +39,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Calculate heart rate for each face
                 heart_rates = rppg_service.process_multiple_rois(rois)
                 
-                # Get processed signal for visualization (optional)
-                processed_signal = rppg_service.get_processed_signal().tolist()
+                # Get processed signal for visualization
+                processed_signal = rppg_service.get_processed_signal()
+                
+                # If we don't have enough filtered signal, use raw signal buffer
+                if len(processed_signal) < 10:
+                    processed_signal = np.array(rppg_service.signal_buffer)
                 
                 # Prepare response data
                 response = {
                     "status": "success",
                     "heart_rates": [round(hr, 1) for hr in heart_rates],
                     "num_faces": len(rois),
-                    "signal": processed_signal[:50]  # Send only last 50 points for visualization
+                    "signal": processed_signal.tolist()[-50:]  # Send only last 50 points for visualization
                 }
                 
                 # Send response back to client

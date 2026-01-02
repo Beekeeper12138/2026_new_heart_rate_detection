@@ -17,11 +17,26 @@ class UIManager {
         
         // Signal data
         this.signalData = [];
-        this.maxSignalData = 100; // Maximum number of data points to display
+        this.maxSignalData = 150; // Maximum number of data points to display (increased for more detail)
         
         // Heart rate history for stats calculation
         this.heartRateHistory = [];
         this.maxHeartRateHistory = 50;
+        
+        // Chart configuration - ECG style
+        this.chartConfig = {
+            gridColor: '#e0e0e0',
+            ecgColor: '#e74c3c', // ECG red color
+            ecgLineWidth: 2,
+            background: '#fafafa',
+            gridSpacing: 20, // Grid line spacing in pixels
+            padding: 70, // Significantly increased left padding for Y-axis labels and title
+            yAxisScale: 0.8, // Scale factor for Y axis (reduced to provide more vertical space)
+            smoothFactor: 1.0, // Signal smoothing factor
+            yAxisLabels: true, // Show Y-axis labels
+            yAxisLabelStep: 5, // Show every 5th grid line label
+            showMinMaxAvg: false // Temporarily disable Min/Max/Avg display to avoid overlap
+        };
         
         // Initialize chart only if signal chart element exists
         if (this.signalCtx) {
@@ -31,23 +46,89 @@ class UIManager {
     
     _initChart() {
         /*
-        Initialize the signal chart
+        Initialize the signal chart with ECG style grid and Y-axis labels
         */
-        // Clear canvas
-        this.signalCtx.clearRect(0, 0, this.signalChartElement.width, this.signalChartElement.height);
+        const ctx = this.signalCtx;
+        const width = this.signalChartElement.width;
+        const height = this.signalChartElement.height;
+        const config = this.chartConfig;
         
-        // Draw grid
-        this.signalCtx.strokeStyle = '#e0e0e0';
-        this.signalCtx.lineWidth = 1;
+        // Clear canvas with background color
+        ctx.fillStyle = config.background;
+        ctx.fillRect(0, 0, width, height);
         
-        // Horizontal lines
-        for (let i = 0; i <= 4; i++) {
-            const y = (this.signalChartElement.height / 4) * i;
-            this.signalCtx.beginPath();
-            this.signalCtx.moveTo(0, y);
-            this.signalCtx.lineTo(this.signalChartElement.width, y);
-            this.signalCtx.stroke();
+        // Draw grid - ECG style
+        ctx.strokeStyle = config.gridColor;
+        ctx.lineWidth = 0.5;
+        
+        // Draw vertical grid lines
+        for (let x = config.padding; x <= width; x += config.gridSpacing) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
         }
+        
+        // Draw horizontal grid lines and Y-axis labels
+        ctx.fillStyle = '#666666';
+        ctx.font = '10px Arial';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        
+        const yAxisLabels = [];
+        // Start from a bit below the top and end a bit above the bottom to ensure labels are visible
+        const startY = config.gridSpacing;
+        const endY = height - config.gridSpacing;
+        
+        for (let y = startY; y <= endY; y += config.gridSpacing) {
+            // Draw grid line
+            ctx.strokeStyle = config.gridColor;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(config.padding, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+            
+            // Draw Y-axis label every N steps
+            if (config.yAxisLabels && y % (config.gridSpacing * config.yAxisLabelStep) === 0) {
+                // Calculate approximate signal value for this grid line
+                const value = Math.round(100 - ((y - startY) / (endY - startY)) * 100);
+                yAxisLabels.push({y: y, value: value});
+                
+                // Draw label with more space from the Y-axis
+                ctx.fillStyle = '#666666';
+                ctx.fillText(value.toString(), config.padding - 10, y);
+            }
+        }
+        
+        // Draw axes
+        ctx.strokeStyle = '#95a5a6';
+        ctx.lineWidth = 1;
+        
+        // X axis (horizontal)
+        const midY = Math.round(height / 2);
+        ctx.beginPath();
+        ctx.moveTo(config.padding, midY);
+        ctx.lineTo(width, midY);
+        ctx.stroke();
+        
+        // Y axis (vertical) - left border
+        ctx.beginPath();
+        ctx.moveTo(config.padding, 0);
+        ctx.lineTo(config.padding, height);
+        ctx.stroke();
+        
+        // Draw Y-axis title
+        ctx.save();
+        // Move title further left and adjust rotation point to ensure full visibility
+        ctx.translate(config.padding / 4, height / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillStyle = '#333333';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('信号强度', 0, 0);
+        ctx.restore();
     }
     
     updateHeartRate(heartRate) {
@@ -89,57 +170,117 @@ class UIManager {
             signalData: array, Array of signal values
         */
         if (signalData && signalData.length > 0) {
-            // Add new signal data
-            this.signalData = [...this.signalData, ...signalData];
+            // Ensure signal data is an array of numbers
+            const validSignalData = signalData.filter(val => typeof val === 'number');
             
-            // Keep only the most recent data points
-            if (this.signalData.length > this.maxSignalData) {
-                this.signalData = this.signalData.slice(-this.maxSignalData);
+            if (validSignalData.length > 0) {
+                // Add new signal data
+                this.signalData = [...this.signalData, ...validSignalData];
+                
+                // Keep only the most recent data points
+                if (this.signalData.length > this.maxSignalData) {
+                    this.signalData = this.signalData.slice(-this.maxSignalData);
+                }
+                
+                // Redraw the chart
+                this._drawSignal();
             }
-            
-            // Redraw the chart
-            this._drawSignal();
         }
     }
     
     _drawSignal() {
         /*
-        Draw the signal chart
+        Draw the signal chart with ECG style
         */
         if (!this.signalCtx || this.signalData.length < 2) return;
         
-        // Clear canvas
-        this.signalCtx.clearRect(0, 0, this.signalChartElement.width, this.signalChartElement.height);
-        
-        // Draw grid again
-        this._initChart();
+        const ctx = this.signalCtx;
+        const width = this.signalChartElement.width;
+        const height = this.signalChartElement.height;
+        const config = this.chartConfig;
+        const signalData = this.signalData;
         
         // Calculate min and max signal values for scaling
-        const minSignal = Math.min(...this.signalData);
-        const maxSignal = Math.max(...this.signalData);
-        const signalRange = maxSignal - minSignal || 1;
+        const minSignal = Math.min(...signalData);
+        const maxSignal = Math.max(...signalData);
+        const signalRange = maxSignal - minSignal || 0.1;
+        
+        // Clear canvas and redraw grid
+        this._initChart();
         
         // Calculate step size
-        const stepX = this.signalChartElement.width / (this.signalData.length - 1);
+        const stepX = (width - 2 * config.padding) / (signalData.length - 1);
         
-        // Draw signal line
-        this.signalCtx.strokeStyle = '#3498db';
-        this.signalCtx.lineWidth = 2;
-        this.signalCtx.beginPath();
+        // Calculate vertical offset (center signal in canvas)
+        const midY = height / 2;
+        const yOffset = height * (1 - config.yAxisScale) / 2;
         
-        for (let i = 0; i < this.signalData.length; i++) {
-            const x = i * stepX;
-            // Scale signal value to canvas height (with some padding)
-            const y = this.signalChartElement.height - ((this.signalData[i] - minSignal) / signalRange) * this.signalChartElement.height * 0.8 - this.signalChartElement.height * 0.1;
+        // Draw Y-axis value markers (based on actual signal range) only if enabled
+        if (config.showMinMaxAvg) {
+            ctx.fillStyle = '#666666';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
             
+            // Draw min/max/avg values
+            const avgSignal = signalData.reduce((sum, val) => sum + val, 0) / signalData.length;
+            const yAxisValues = [
+                { label: `Max: ${maxSignal.toFixed(2)}`, y: height - yOffset },
+                { label: `Avg: ${avgSignal.toFixed(2)}`, y: midY },
+                { label: `Min: ${minSignal.toFixed(2)}`, y: yOffset }
+            ];
+            
+            yAxisValues.forEach(item => {
+                ctx.fillStyle = '#333333';
+                ctx.fillText(item.label, config.padding - 5, item.y);
+            });
+        }
+        
+        // Draw signal line - ECG style
+        ctx.strokeStyle = config.ecgColor;
+        ctx.lineWidth = config.ecgLineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        
+        for (let i = 0; i < signalData.length; i++) {
+            const x = config.padding + i * stepX;
+            
+            // Normalize signal value to 0-1 range
+            const normalizedSignal = (signalData[i] - minSignal) / signalRange;
+            
+            // Scale to canvas height with padding and center alignment
+            const y = height - yOffset - normalizedSignal * height * config.yAxisScale;
+            
+            // Draw the point - use simple line for better performance and clarity
             if (i === 0) {
-                this.signalCtx.moveTo(x, y);
+                ctx.moveTo(x, y);
             } else {
-                this.signalCtx.lineTo(x, y);
+                ctx.lineTo(x, y);
             }
         }
         
-        this.signalCtx.stroke();
+        ctx.stroke();
+        
+        // Draw signal fill for better visual effect
+        ctx.fillStyle = 'rgba(231, 76, 60, 0.1)'; // Semi-transparent red fill
+        ctx.lineTo(width - config.padding, height - yOffset);
+        ctx.lineTo(config.padding, height - yOffset);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add a simple moving dot at the end of the signal to show real-time update
+        if (signalData.length > 0) {
+            const lastIndex = signalData.length - 1;
+            const x = config.padding + lastIndex * stepX;
+            const normalizedSignal = (signalData[lastIndex] - minSignal) / signalRange;
+            const y = height - yOffset - normalizedSignal * height * config.yAxisScale;
+            
+            ctx.fillStyle = '#2ecc71'; // Green dot for real-time indicator
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, 2 * Math.PI);
+            ctx.fill();
+        }
     }
     
     updateFaceCount(count) {

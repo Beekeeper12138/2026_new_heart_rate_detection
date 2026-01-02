@@ -67,11 +67,10 @@ async def get_heart_rate_history(
     if end_time:
         query = query.filter(HeartRate.timestamp <= end_time)
     
-    # If no time range specified, default to last 24 hours
+    # If no time range specified, get all records (limit to 100)
     if not start_time and not end_time:
-        end_time = datetime.now()
-        start_time = end_time - timedelta(hours=24)
-        query = query.filter(HeartRate.timestamp >= start_time, HeartRate.timestamp <= end_time)
+        # Don't filter by time, get all records (limited by the limit parameter)
+        pass
     
     # Execute query with limit and order by timestamp desc
     heart_rates = query.order_by(HeartRate.timestamp.desc()).limit(limit).all()
@@ -114,11 +113,10 @@ async def get_heart_rate_stats(
     if end_time:
         query = query.filter(HeartRate.timestamp <= end_time)
     
-    # If no time range specified, default to last 24 hours
+    # If no time range specified, get all records
     if not start_time and not end_time:
-        end_time = datetime.now()
-        start_time = end_time - timedelta(hours=24)
-        query = query.filter(HeartRate.timestamp >= start_time, HeartRate.timestamp <= end_time)
+        # Don't filter by time, get all records
+        pass
     
     # Get all heart rates in the time range
     heart_rates = query.all()
