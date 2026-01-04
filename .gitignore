@@ -1,0 +1,43 @@
+# Python compiled files
+__pycache__/
+*.pyc
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build files
+build/
+dist/
+*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+logs/
+*.log
+
+# Test files
+.coverage
+coverage.xml
+pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

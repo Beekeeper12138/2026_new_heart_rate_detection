@@ -24,14 +24,62 @@ class FaceRecognitionService:
         # Convert frame to grayscale for face detection
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Detect faces using Haar cascade
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
+        # 1. First pass: Strong glare reduction using adaptive thresholding
+        # Create a binary mask for bright regions (likely glare)
+        _, glare_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        
+        # 2. Apply morphology to remove small bright spots and fill holes
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        glare_mask = cv2.morphologyEx(glare_mask, cv2.MORPH_CLOSE, kernel)
+        glare_mask = cv2.morphologyEx(glare_mask, cv2.MORPH_OPEN, kernel)
+        
+        # 3. Inpaint the glare regions to reconstruct facial features
+        inpainted_gray = cv2.inpaint(gray, glare_mask, 3, cv2.INPAINT_TELEA)
+        
+        # 4. Apply CLAHE with more aggressive parameters for contrast enhancement
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+        enhanced_gray = clahe.apply(inpainted_gray)
+        
+        # 5. Multi-scale blur for different levels of noise reduction
+        blurred_gray = cv2.GaussianBlur(enhanced_gray, (5, 5), 0)
+        
+        # 6. Edge enhancement to preserve facial features lost during blur
+        edge_enhanced = cv2.addWeighted(blurred_gray, 1.5, cv2.GaussianBlur(blurred_gray, (0,0), 3), -0.5, 0)
+        
+        # 7. Multi-pass detection approach - combine results from different parameter sets
+        # First pass: Very sensitive detection
+        faces1 = self.face_cascade.detectMultiScale(
+            edge_enhanced,
+            scaleFactor=1.02,  # Extremely sensitive scale factor
+            minNeighbors=1,     # Very low threshold
+            minSize=(10, 10),   # Detect very small faces
             flags=cv2.CASCADE_SCALE_IMAGE
         )
+        
+        # Second pass: Slightly more conservative to filter false positives
+        faces2 = self.face_cascade.detectMultiScale(
+            edge_enhanced,
+            scaleFactor=1.05,  # Moderate scale factor
+            minNeighbors=2,     # Slightly higher threshold
+            minSize=(20, 20),   # Slightly larger minimum size
+            flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        
+        # Combine results from both passes, removing duplicates
+        faces = []
+        all_faces = list(faces1) + list(faces2)
+        
+        # Remove duplicate faces (using simple distance check)
+        for (x, y, w, h) in all_faces:
+            duplicate = False
+            for (x2, y2, w2, h2) in faces:
+                # Check if centers are close (within 20% of face width)
+                center_dist = ((x + w/2 - (x2 + w2/2)) ** 2 + (y + h/2 - (y2 + h2/2)) ** 2) ** 0.5
+                if center_dist < min(w, h) * 0.2:
+                    duplicate = True
+                    break
+            if not duplicate:
+                faces.append((x, y, w, h))
         
         # Convert from (x, y, w, h) to (top, right, bottom, left) format
         face_locations = []

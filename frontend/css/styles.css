@@ -110,7 +110,7 @@ main {
     background-color: #000;
 }
 
-#video {
+#video, #canvas {
     position: absolute;
     top: 0;
     left: 0;

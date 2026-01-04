@@ -31,6 +31,14 @@
                     <button id="start-btn" class="btn btn-primary">开始监测</button>
                     <button id="stop-btn" class="btn btn-secondary" disabled>停止监测</button>
                     <button id="save-btn" class="btn btn-success">保存数据</button>
+                    <div class="camera-selector">
+                        <label for="camera-source">摄像头选择：</label>
+                        <select id="camera-source" class="select">
+                            <option value="device">设备摄像头</option>
+                            <option value="esp32">ESP32摄像头</option>
+                        </select>
+                        <input type="text" id="esp32-ip" placeholder="ESP32 IP地址" class="input" style="width: 150px; margin-left: 10px;">
+                    </div>
                 </div>
             </div>
 

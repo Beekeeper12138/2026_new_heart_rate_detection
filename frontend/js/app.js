@@ -5,6 +5,10 @@ class HeartRateApp {
         this.video = document.getElementById('video');
         this.canvas = document.getElementById('canvas');
         
+        // Camera selection elements
+        this.cameraSourceSelect = document.getElementById('camera-source');
+        this.esp32IpInput = document.getElementById('esp32-ip');
+        
         // Initialize managers
         this.cameraManager = new CameraManager(this.video, this.canvas);
         this.uiManager = new UIManager();
@@ -46,6 +50,32 @@ class HeartRateApp {
         document.getElementById('save-btn').addEventListener('click', () => {
             this.saveData();
         });
+        
+        // Camera source change
+        if (this.cameraSourceSelect) {
+            this.cameraSourceSelect.addEventListener('change', (event) => {
+                // Stop monitoring if currently running
+                if (this.isMonitoring) {
+                    this.stopMonitoring();
+                }
+                
+                // Update ESP32 IP input visibility based on selection
+                if (event.target.value === 'esp32') {
+                    this.esp32IpInput.style.display = 'inline-block';
+                } else {
+                    this.esp32IpInput.style.display = 'none';
+                }
+            });
+        }
+        
+        // Initialize ESP32 IP input visibility based on default selection
+        if (this.cameraSourceSelect && this.esp32IpInput) {
+            if (this.cameraSourceSelect.value === 'esp32') {
+                this.esp32IpInput.style.display = 'inline-block';
+            } else {
+                this.esp32IpInput.style.display = 'none';
+            }
+        }
     }
     
     _initWebSocketCallbacks() {
@@ -79,6 +109,19 @@ class HeartRateApp {
         Start heart rate monitoring
         */
         try {
+            // Get selected camera mode and IP address
+            const cameraMode = this.cameraSourceSelect ? this.cameraSourceSelect.value : 'device';
+            const esp32Ip = this.esp32IpInput ? this.esp32IpInput.value.trim() : '192.168.1.100';
+            
+            // Validate ESP32 IP if ESP32 mode is selected
+            if (cameraMode === 'esp32' && !esp32Ip) {
+                this.uiManager.showError('请输入ESP32 IP地址');
+                return;
+            }
+            
+            // Set camera mode
+            this.cameraManager.setCameraMode(cameraMode, esp32Ip);
+            
             // Start camera
             await this.cameraManager.start();
             this.uiManager.updateStatus('摄像头已启动，正在连接服务器...');
