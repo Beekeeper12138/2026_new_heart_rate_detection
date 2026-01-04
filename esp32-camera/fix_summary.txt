@@ -1,0 +1,60 @@
+## ESP32-S3-EYE 崩溃问题修复总结
+
+### 问题根源
+程序在执行 `wifi_init_sta` 函数时崩溃，错误信息：
+```
+ESP_ERROR_CHECK failed: esp_err_t 0x103 (ESP_ERR_INVALID_STATE)
+expression: esp_event_loop_create_default()
+```
+
+### 具体原因
+在 `main.c` 文件的第 31 行已经调用了 `esp_event_loop_create_default()` 函数，而在 `wifi.c` 文件的第 65 行又再次调用了同一个函数。该函数在整个程序生命周期中**只能被调用一次**，重复调用导致系统返回 "无效状态" 错误。
+
+### 修复方案
+修改 `wifi.c` 文件，删除重复的初始化函数调用：
+- 删除第 63 行的 `ESP_ERROR_CHECK(esp_netif_init());`
+- 删除第 65 行的 `ESP_ERROR_CHECK(esp_event_loop_create_default());`
+- 保留 `esp_netif_create_default_wifi_sta();`
+
+### 修复后的代码
+```c
+esp_err_t wifi_init_sta(void)
+{
+    s_wifi_event_group = xEventGroupCreate();
+
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    // ... 其余代码保持不变
+}
+```
+
+### 编译和烧录步骤
+1. 进入 ESP32 项目目录：
+   ```bash
+   cd ~/esp32-camera
+   ```
+
+2. 清理之前的构建文件：
+   ```bash
+   idf.py clean
+   ```
+
+3. 编译项目：
+   ```bash
+   idf.py build
+   ```
+
+4. 烧录到设备：
+   ```bash
+   idf.py flash -p /dev/ttyUSB0
+   ```
+
+5. 查看串口输出：
+   ```bash
+   idf.py monitor -p /dev/ttyUSB0
+   ```
+
+### 预期结果
+修复后，ESP32-S3-EYE 将成功启动，连接到指定的 WiFi 网络，并通过 HTTP 服务器提供 MJPEG 视频流。

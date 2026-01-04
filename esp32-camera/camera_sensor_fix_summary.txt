@@ -1,0 +1,84 @@
+## ESP32-S3-EYE 摄像头不显示画面修复总结
+
+### 问题现象
+ESP32-S3-EYE 启动成功，HTTP 服务器正常运行，但访问 `http://<设备IP>` 时只显示标题和链接，摄像头画面区域为空。
+
+### 问题原因
+摄像头虽然初始化成功，但缺少对 OV5640 传感器的具体配置，导致无法正常输出图像：
+1. 缺少传感器参数设置
+2. 缺少图像翻转/镜像配置（OV5640 默认输出可能上下颠倒或左右镜像）
+3. 缺少传感器分辨率和质量的明确设置
+
+### 修复方案
+修改 `camera.c` 文件，增强摄像头初始化函数，添加 OV5640 传感器配置：
+
+1. **获取传感器指针**：使用 `esp_camera_sensor_get()` 获取摄像头传感器对象
+2. **设置分辨率**：明确设置为 VGA (640x480) 分辨率
+3. **设置图像质量**：设置为 30（中等质量，平衡图像质量和传输速度）
+4. **设置图像翻转**：垂直翻转图像（根据 ESP32-S3-EYE 硬件布局调整）
+5. **设置图像镜像**：水平镜像图像（根据 ESP32-S3-EYE 硬件布局调整）
+
+### 修复后的代码
+```c
+esp_err_t camera_init(void)
+{
+    // Initialize the camera
+    esp_err_t err = esp_camera_init(&camera_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
+        return err;
+    }
+
+    // Get camera sensor
+    sensor_t *sensor = esp_camera_sensor_get();
+    if (!sensor) {
+        ESP_LOGE(TAG, "Failed to get camera sensor");
+        return ESP_FAIL;
+    }
+
+    // Set sensor parameters for better performance
+    sensor->set_framesize(sensor, FRAMESIZE_VGA);
+    sensor->set_quality(sensor, 30);
+    sensor->set_vflip(sensor, 1); // Flip vertically (adjust based on your setup)
+    sensor->set_hmirror(sensor, 1); // Mirror horizontally (adjust based on your setup)
+
+    ESP_LOGI(TAG, "Camera initialized successfully");
+    return ESP_OK;
+}
+```
+
+### 编译和烧录步骤
+1. 进入 ESP32 项目目录：
+   ```bash
+   cd ~/esp32-camera
+   ```
+
+2. 清理之前的构建文件：
+   ```bash
+   idf.py clean
+   ```
+
+3. 编译项目：
+   ```bash
+   idf.py build
+   ```
+
+4. 烧录到设备：
+   ```bash
+   idf.py flash -p /dev/ttyUSB0
+   ```
+
+5. 查看串口输出：
+   ```bash
+   idf.py monitor -p /dev/ttyUSB0
+   ```
+
+### 测试建议
+1. 烧录完成后，等待设备启动并连接到 WiFi
+2. 在串口输出中查找设备获取的 IP 地址（例如：`got ip:192.168.1.100`）
+3. 在浏览器中访问 `http://<设备IP>`，查看摄像头实时流
+4. 如果画面显示异常（上下颠倒或左右镜像），可以调整 `set_vflip` 和 `set_hmirror` 的参数
+5. 在心率监测系统前端，选择 "ESP32摄像头" 模式，输入设备 IP 地址，点击 "开始监测"
+
+### 预期结果
+修复后，访问 `http://<设备IP>` 时应该能看到摄像头实时画面，心率监测系统也能正常接收和处理视频流。

@@ -1,0 +1,70 @@
+## ESP32-S3-EYE 摄像头 JPEG 错误修复总结
+
+### 问题现象
+ESP32-S3-EYE 启动成功后，串口日志中出现大量 JPEG 错误：
+```
+cam_hal: NO-SOI - JPEG start marker missing - 100 additional misses
+```
+
+### 问题原因
+摄像头配置参数不适合 ESP32-S3-EYE 开发板，导致 JPEG 编码异常：
+1. XCLK 频率设置为 20MHz，超出了 OV5640 摄像头在 ESP32-S3 上的稳定工作频率
+2. 帧缓冲区数量设置为 2，可能导致内存管理问题
+3. 使用 PSRAM 存储帧缓冲区，可能存在稳定性问题
+4. JPEG 质量设置过低（10），可能影响编码稳定性
+
+### 修复方案
+修改 `camera.c` 文件中的摄像头配置参数：
+
+1. **XCLK 频率**：从 20MHz 改为 10MHz，适合 ESP32-S3-EYE 的 OV5640 摄像头
+2. **JPEG 质量**：从 10 改为 30，提高编码稳定性
+3. **帧缓冲区数量**：从 2 改为 1，减少内存压力
+4. **帧缓冲区位置**：从 PSRAM 改为 DRAM，提高稳定性
+
+### 修复后的配置
+```c
+static camera_config_t camera_config = {
+    // ... 其他引脚配置不变
+    .xclk_freq_hz = 10000000,       // 改为 10MHz
+    .jpeg_quality = 30,             // 提高 JPEG 质量
+    .fb_count = 1,                  // 减少帧缓冲区数量
+    .fb_location = CAMERA_FB_IN_DRAM, // 使用 DRAM 替代 PSRAM
+    // ... 其他配置不变
+};
+```
+
+### 编译和烧录步骤
+1. 进入 ESP32 项目目录：
+   ```bash
+   cd ~/esp32-camera
+   ```
+
+2. 清理之前的构建文件：
+   ```bash
+   idf.py clean
+   ```
+
+3. 编译项目：
+   ```bash
+   idf.py build
+   ```
+
+4. 烧录到设备：
+   ```bash
+   idf.py flash -p /dev/ttyUSB0
+   ```
+
+5. 查看串口输出：
+   ```bash
+   idf.py monitor -p /dev/ttyUSB0
+   ```
+
+### 测试建议
+1. 烧录完成后，等待设备启动并连接到 WiFi
+2. 在串口输出中查找设备获取的 IP 地址（例如：`got ip:192.168.1.100`）
+3. 在浏览器中访问 `http://<设备IP>`，查看摄像头实时流
+4. 在浏览器中访问 `http://<设备IP>/stream`，直接查看 MJPEG 流
+5. 在心率监测系统前端，选择 "ESP32摄像头" 模式，输入设备 IP 地址，点击 "开始监测"
+
+### 预期结果
+修复后，串口日志中的 JPEG 错误应该会消失，摄像头能够稳定输出 MJPEG 视频流，心率监测系统可以正常接收和处理视频流。
