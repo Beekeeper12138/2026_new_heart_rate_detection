@@ -1,6 +1,23 @@
 import cv2
 import numpy as np
 import time
+import torch
+import torchvision.transforms as transforms
+from torch.autograd import Variable
+import sys
+import os
+
+# Add rPPG directory to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../rPPG'))
+
+# Try to import skin segmentation modules
+try:
+    from FaceSeg import FaceSegGPU
+    from models import UNet16, UNet11
+    SKIN_SEGMENTATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Skin segmentation module import error: {e}")
+    SKIN_SEGMENTATION_AVAILABLE = False
 
 class FaceRecognitionService:
     def __init__(self):
@@ -32,6 +49,35 @@ class FaceRecognitionService:
             
             if self.face_cascade.empty():
                 print("Critical error: No face cascade found. Face detection will not work.")
+        
+        # Initialize skin segmentation model if available
+        self.skin_segmenter = None
+        self.skin_segmentation_available = SKIN_SEGMENTATION_AVAILABLE
+        
+        if SKIN_SEGMENTATION_AVAILABLE:
+            try:
+                # Check if CUDA is available
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                print(f"Initializing skin segmentation model on {device}")
+                
+                # Initialize skin segmentation model with compression
+                self.skin_segmenter = FaceSegGPU(bs=1, size=256, use_compression=True)
+                print("Skin segmentation model initialized successfully with compression")
+                
+                # Initialize image transform
+                self.transform = transforms.Compose([
+                    transforms.ToPILImage(),
+                    transforms.Resize((256, 256)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225]
+                    )
+                ])
+            except Exception as e:
+                print(f"Error initializing skin segmentation model: {e}")
+                self.skin_segmentation_available = False
+                self.skin_segmenter = None
     
     def detect_faces(self, frame):
         """
@@ -119,6 +165,51 @@ class FaceRecognitionService:
         
         return face_locations
     
+    def segment_skin(self, frame):
+        """
+        Segment skin pixels from the frame using deep learning
+        
+        Args:
+            frame: numpy array representing the image frame
+            
+        Returns:
+            numpy array: Skin mask (1 for skin, 0 for non-skin)
+        """
+        if not self.skin_segmentation_available or self.skin_segmenter is None:
+            return None
+        
+        try:
+            # Enhance contrast to improve skin segmentation in varying lighting
+            enhanced_frame = frame.copy()
+            
+            # Apply illumination normalization if available
+            if hasattr(self.skin_segmenter, 'normalize_illumination'):
+                enhanced_frame = self.skin_segmenter.normalize_illumination(enhanced_frame)
+            
+            # Apply contrast enhancement if available
+            if hasattr(self.skin_segmenter, 'enhance_contrast'):
+                enhanced_frame = self.skin_segmenter.enhance_contrast(enhanced_frame)
+            
+            # Convert frame to RGB format (OpenCV uses BGR)
+            frame_rgb = cv2.cvtColor(enhanced_frame, cv2.COLOR_BGR2RGB)
+            
+            # Apply transform
+            transformed = self.transform(frame_rgb)
+            transformed = transformed.unsqueeze(0)  # Add batch dimension
+            
+            # Get skin mask with adaptive threshold
+            mask = self.skin_segmenter.get_mask(transformed, frame.shape, adaptive_threshold=True)
+            
+            # Ensure mask shape matches frame shape
+            if len(mask.shape) == 2:
+                mask = np.expand_dims(mask, axis=2)
+                mask = np.repeat(mask, 3, axis=2)
+            
+            return mask
+        except Exception as e:
+            print(f"Error in skin segmentation: {e}")
+            return None
+    
     def extract_roi(self, frame, face_location):
         """
         Extract Region of Interest (ROI) from face for rPPG analysis
@@ -147,8 +238,33 @@ class FaceRecognitionService:
         forehead_left = max(0, forehead_left)
         forehead_right = min(w, forehead_right)
         
+        # Ensure coordinates are in correct order
+        if forehead_left >= forehead_right or forehead_top >= forehead_bottom:
+            # If ROI is invalid, return a small central region
+            center_x = (left + right) // 2
+            center_y = (top + bottom) // 2
+            roi_size = min(right - left, bottom - top) // 2
+            forehead_top = max(0, center_y - roi_size // 2)
+            forehead_bottom = min(h, center_y + roi_size // 2)
+            forehead_left = max(0, center_x - roi_size // 2)
+            forehead_right = min(w, center_x + roi_size // 2)
+        
         # Extract ROI
         roi = frame[forehead_top:forehead_bottom, forehead_left:forehead_right]
+        
+        # Apply skin segmentation if available
+        if self.skin_segmentation_available and self.skin_segmenter is not None:
+            try:
+                # Get skin mask for the entire frame
+                skin_mask = self.segment_skin(frame)
+                if skin_mask is not None:
+                    # Extract mask for the ROI region
+                    roi_mask = skin_mask[forehead_top:forehead_bottom, forehead_left:forehead_right]
+                    # Ensure mask shape matches ROI shape
+                    if roi_mask.shape == roi.shape:
+                        roi = roi * roi_mask
+            except Exception as e:
+                print(f"Error applying skin mask to ROI: {e}")
         
         return roi
     
@@ -182,41 +298,94 @@ class FaceRecognitionService:
         # Start timing
         start_time = time.time()
         
-        # Debug: Print frame shape
-        print(f"Frame shape: {frame.shape}")
-        
         # Get original frame resolution
         original_height, original_width = frame.shape[:2]
         
-        # Resize frame of video to 1/4 size for faster face detection processing
-        small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+        # Check if frame is low resolution
+        is_low_res = original_width < 640 or original_height < 480
         
-        # Debug: Print small frame shape
-        print(f"Small frame shape: {small_frame.shape}")
+        # Apply image enhancement for low resolution frames
+        if is_low_res:
+            # Resize to improve face detection
+            scale_factor = max(640 / original_width, 480 / original_height)
+            new_width = int(original_width * scale_factor)
+            new_height = int(original_height * scale_factor)
+            enhanced_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+            
+            # Apply sharpening filter
+            kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+            enhanced_frame = cv2.filter2D(enhanced_frame, -1, kernel)
+            
+            # Apply histogram equalization to improve contrast
+            if len(enhanced_frame.shape) == 3:
+                # For color images, apply CLAHE to each channel
+                channels = cv2.split(enhanced_frame)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                for i in range(len(channels)):
+                    channels[i] = clahe.apply(channels[i])
+                enhanced_frame = cv2.merge(channels)
+            else:
+                # For grayscale images
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                enhanced_frame = clahe.apply(enhanced_frame)
+        else:
+            enhanced_frame = frame.copy()
+        
+        # Resize frame of video for faster face detection processing
+        # For low res, use smaller scale factor to preserve details
+        scale_factor = 0.25 if not is_low_res else 0.5
+        small_frame = cv2.resize(enhanced_frame, (0, 0), fx=scale_factor, fy=scale_factor)
         
         # Detect faces in the small frame
         face_locations = self.detect_faces(small_frame)
         
-        # Debug: Print number of faces detected in small frame
-        print(f"Faces detected in small frame: {len(face_locations)}")
-        print(f"Face locations in small frame: {face_locations}")
+        # Calculate scale factor for face locations
+        location_scale = 1 / scale_factor
         
-        # Scale back up face locations since the frame we detected in was scaled to 1/4 size
-        face_locations = [(top * 4, right * 4, bottom * 4, left * 4) for (top, right, bottom, left) in face_locations]
+        # Scale back up face locations
+        face_locations = [(int(top * location_scale), int(right * location_scale), int(bottom * location_scale), int(left * location_scale)) for (top, right, bottom, left) in face_locations]
         
-        # Debug: Print scaled face locations
-        print(f"Scaled face locations: {face_locations}")
+        # Ensure face locations are within bounds of original frame
+        adjusted_face_locations = []
+        for (top, right, bottom, left) in face_locations:
+            # Adjust to original frame size if we scaled up for low res
+            if is_low_res:
+                adj_top = int(top * (original_height / new_height))
+                adj_right = int(right * (original_width / new_width))
+                adj_bottom = int(bottom * (original_height / new_height))
+                adj_left = int(left * (original_width / new_width))
+            else:
+                adj_top, adj_right, adj_bottom, adj_left = top, right, bottom, left
+            
+            # Ensure bounds are within frame
+            adj_top = max(0, adj_top)
+            adj_right = min(original_width, adj_right)
+            adj_bottom = min(original_height, adj_bottom)
+            adj_left = max(0, adj_left)
+            
+            adjusted_face_locations.append((adj_top, adj_right, adj_bottom, adj_left))
         
         # Extract ROIs for each face
         rois = []
-        for face_location in face_locations:
-            roi = self.extract_roi(frame, face_location)
-            rois.append(roi)
-            # Debug: Print ROI shape
-            print(f"ROI shape: {roi.shape}")
         
+        # Try skin segmentation if available and needed
+        skin_mask = None
+        if self.skin_segmentation_available and len(adjusted_face_locations) > 0:
+            try:
+                skin_mask = self.segment_skin(enhanced_frame if is_low_res else frame)
+            except Exception as e:
+                print(f"Skin segmentation error: {e}")
+        
+        for face_location in adjusted_face_locations:
+            roi = self.extract_roi(enhanced_frame if is_low_res else frame, face_location)
+            rois.append(roi)
+        
+        # Face bounding boxes drawing disabled per user request
         # Draw bounding boxes on the frame
-        frame_with_boxes = self.draw_face_bounding_box(frame.copy(), face_locations)
+        display_frame = enhanced_frame if is_low_res else frame
+        # frame_with_boxes = self.draw_face_bounding_box(display_frame.copy(), adjusted_face_locations)
+        # Return original frame without bounding boxes
+        frame_with_boxes = display_frame.copy()
         
         # Calculate processing time
         processing_time = (time.time() - start_time) * 1000  # Convert to milliseconds
@@ -225,7 +394,7 @@ class FaceRecognitionService:
         if processing_time > 30:  # If processing time exceeds 33ms (30fps)
             print(f"Processing time: {processing_time:.2f}ms")
         
-        return frame_with_boxes, rois, face_locations, (original_width, original_height)
+        return frame_with_boxes, rois, adjusted_face_locations, (original_width, original_height)
     
     def decode_image(self, image_data):
         """

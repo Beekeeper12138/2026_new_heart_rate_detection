@@ -159,6 +159,9 @@ class HeartRateApp {
         // Update state
         this.isMonitoring = false;
         
+        // Clear face bounding boxes
+        this._drawFaceBoundingBoxes([]);
+        
         // Reset UI
         this.uiManager.reset();
     }
@@ -202,14 +205,19 @@ class HeartRateApp {
                 this.uiManager.updateStatus('未检测到人脸，请调整位置...');
             }
             
-            // Draw face bounding boxes if coordinates are provided
-            if (data.face_coordinates && Array.isArray(data.face_coordinates)) {
-                console.log('Processing face coordinates...');
-                this._drawFaceBoundingBoxes(data.face_coordinates, data.processing_resolution);
-            } else {
-                console.log('No face coordinates in response');
-                // Clear existing bounding boxes if no coordinates provided
-                this._drawFaceBoundingBoxes([], data.processing_resolution);
+            // Face bounding boxes drawing disabled per user request
+            // if (data.face_coordinates && Array.isArray(data.face_coordinates)) {
+            //     console.log('Processing face coordinates...');
+            //     this._drawFaceBoundingBoxes(data.face_coordinates, data.processing_resolution);
+            // } else {
+            //     console.log('No face coordinates in response');
+            //     // Clear existing bounding boxes if no coordinates provided
+            //     this._drawFaceBoundingBoxes([], data.processing_resolution);
+            // }
+            // Clear any existing bounding boxes
+            const overlay = document.querySelector('.overlay');
+            if (overlay) {
+                overlay.innerHTML = '';
             }
         } else if (data.status === 'error') {
             console.error('Server error:', data.message);
