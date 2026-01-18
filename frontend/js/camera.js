@@ -54,11 +54,11 @@ class CameraManager {
         /*
         Start the device camera
         */
-        // Request camera access
+        // Request camera access with higher resolution
         this.stream = await navigator.mediaDevices.getUserMedia({
             video: {
-                width: { ideal: 640 },
-                height: { ideal: 480 },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
                 facingMode: 'user'  // Use front-facing camera
             },
             audio: false
@@ -75,6 +75,11 @@ class CameraManager {
         // Wait for the video to start playing
         await new Promise((resolve) => {
             this.video.onloadedmetadata = () => {
+                // Set canvas dimensions to match video natural dimensions
+                // This ensures high-resolution image capture
+                this.canvas.width = this.video.videoWidth || 1280;
+                this.canvas.height = this.video.videoHeight || 720;
+                console.log('Set canvas dimensions to:', this.canvas.width, 'x', this.canvas.height);
                 resolve();
             };
         });
@@ -211,21 +216,30 @@ class CameraManager {
             return null;
         }
 
-        // Ensure canvas has proper dimensions
-        if (this.canvas.width === 0 || this.canvas.height === 0) {
-            this.canvas.width = 640;
-            this.canvas.height = 480;
+        // Force canvas dimensions to ensure high-resolution capture
+        // This fixes the issue where canvas was defaulting to 300x150
+        const targetWidth = this.video.videoWidth || 1280;
+        const targetHeight = this.video.videoHeight || 720;
+        
+        // Only resize if dimensions don't match
+        if (this.canvas.width !== targetWidth || this.canvas.height !== targetHeight) {
+            this.canvas.width = targetWidth;
+            this.canvas.height = targetHeight;
+            console.log('Forced canvas dimensions to:', targetWidth, 'x', targetHeight);
         }
 
         // For ESP32 mode, the frame is already drawn to canvas by _captureEsp32Frames
         // For device mode, draw current frame if needed
         if (this.cameraMode === 'device') {
-            // Draw current frame to canvas
+            // Draw current frame to canvas with correct dimensions
             this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
+            console.log('Drew frame to canvas with dimensions:', this.canvas.width, 'x', this.canvas.height);
         }
 
         // Convert canvas to base64 image
-        return this.canvas.toDataURL('image/jpeg', 0.7); // 70% quality for better performance
+        const imageData = this.canvas.toDataURL('image/jpeg', 0.95); // 95% quality for better image clarity
+        console.log('Captured frame, data length:', imageData.length);
+        return imageData;
     }
 
     onFrame(callback) {

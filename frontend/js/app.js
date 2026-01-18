@@ -170,6 +170,15 @@ class HeartRateApp {
         Args:
             data: Object, Message data from server
         */
+        console.log('=== WebSocket message received ===');
+        console.log('Message status:', data.status);
+        console.log('Message keys:', Object.keys(data));
+        console.log('Heart rates:', data.heart_rates);
+        console.log('Number of faces:', data.num_faces);
+        console.log('Signal data length:', data.signal ? data.signal.length : 0);
+        console.log('Image data present:', data.image ? 'Yes' : 'No');
+        console.log('Image data length:', data.image ? data.image.length : 0);
+        
         if (data.status === 'success') {
             // Update heart rate if available
             if (data.heart_rates && data.heart_rates.length > 0) {
@@ -192,10 +201,159 @@ class HeartRateApp {
             } else {
                 this.uiManager.updateStatus('未检测到人脸，请调整位置...');
             }
+            
+            // Draw face bounding boxes if coordinates are provided
+            if (data.face_coordinates && Array.isArray(data.face_coordinates)) {
+                console.log('Processing face coordinates...');
+                this._drawFaceBoundingBoxes(data.face_coordinates, data.processing_resolution);
+            } else {
+                console.log('No face coordinates in response');
+                // Clear existing bounding boxes if no coordinates provided
+                this._drawFaceBoundingBoxes([], data.processing_resolution);
+            }
         } else if (data.status === 'error') {
             console.error('Server error:', data.message);
             this.uiManager.showError(data.message);
+        } else {
+            console.log('Unknown message status:', data.status);
         }
+        
+        console.log('=== WebSocket message processing complete ===');
+    }
+    
+    _displayProcessedImage(imageData) {
+        /*
+        This method is deprecated - we now use overlay method instead
+        */
+        console.log('Deprecated: _displayProcessedImage method called');
+    }
+    
+    // Store animation frame ID for cancellation
+    _animationFrameId = null;
+    
+    _drawFaceBoundingBoxes(faceCoordinates, processingResolution = null) {
+        /*
+        Draw face bounding boxes on the overlay
+        
+        Args:
+            faceCoordinates: array, face locations in format (top, right, bottom, left)
+            processingResolution: object, processing resolution from backend {width, height}
+        */
+        console.log('=== Drawing face bounding boxes ===');
+        console.log('Face coordinates received:', faceCoordinates);
+        console.log('Processing resolution:', processingResolution);
+        
+        // Cancel any pending animation frame
+        if (this._animationFrameId) {
+            cancelAnimationFrame(this._animationFrameId);
+        }
+        
+        // Use requestAnimationFrame for smoother rendering
+        this._animationFrameId = requestAnimationFrame(() => {
+            try {
+                // Get the overlay element
+                const overlay = document.querySelector('.overlay');
+                if (!overlay) {
+                    console.error('Overlay element not found');
+                    return;
+                }
+                
+                // Get video element to calculate scaling
+                const video = document.getElementById('video');
+                if (!video) {
+                    console.error('Video element not found');
+                    return;
+                }
+                
+                // Calculate video scaling
+                const videoRect = video.getBoundingClientRect();
+                const overlayRect = overlay.getBoundingClientRect();
+                
+                // Get video natural dimensions
+                const videoWidth = video.videoWidth || 1280;
+                const videoHeight = video.videoHeight || 720;
+                
+                // Calculate scaling factors
+                const scaleX = overlayRect.width / videoWidth;
+                const scaleY = overlayRect.height / videoHeight;
+                
+                console.log('Video natural size:', videoWidth, 'x', videoHeight);
+                console.log('Video display size:', videoRect.width, 'x', videoRect.height);
+                console.log('Overlay size:', overlayRect.width, 'x', overlayRect.height);
+                console.log('Scaling factors:', scaleX, scaleY);
+                
+                // Clear existing bounding boxes
+                overlay.innerHTML = '';
+                
+                // Draw new bounding boxes
+                faceCoordinates.forEach((coords, index) => {
+                    if (coords && coords.length === 4) {
+                        const [top, right, bottom, left] = coords;
+                        
+                        // Apply scaling to coordinates
+                        let originalTop, originalLeft, originalWidth, originalHeight;
+                        
+                        if (processingResolution) {
+                            // Use backend-provided processing resolution for accurate scaling
+                            const backendWidth = processingResolution.width || 640;
+                            const backendHeight = processingResolution.height || 480;
+                            
+                            console.log('Using backend processing resolution:', backendWidth, 'x', backendHeight);
+                            
+                            // Calculate scaling factors based on actual backend processing resolution
+                            const backendScaleX = backendWidth / videoWidth;
+                            const backendScaleY = backendHeight / videoHeight;
+                            
+                            // Adjust coordinates to original video resolution
+                            originalTop = top / backendScaleY;
+                            originalLeft = left / backendScaleX;
+                            originalWidth = (right - left) / backendScaleX;
+                            originalHeight = (bottom - top) / backendScaleY;
+                        } else {
+                            // Fallback: Use direct scaling if no processing resolution provided
+                            console.log('No processing resolution provided, using direct scaling');
+                            originalTop = top;
+                            originalLeft = left;
+                            originalWidth = right - left;
+                            originalHeight = bottom - top;
+                        }
+                        
+                        // Then scale to display resolution
+                        const scaledTop = originalTop * scaleY;
+                        const scaledLeft = originalLeft * scaleX;
+                        const scaledWidth = originalWidth * scaleX;
+                        const scaledHeight = originalHeight * scaleY;
+                        
+                        console.log('Backend coordinates:', top, right, bottom, left);
+                        console.log('Original video coordinates:', originalTop, originalLeft, originalWidth, originalHeight);
+                        console.log('Display coordinates:', scaledTop, scaledLeft, scaledWidth, scaledHeight);
+                        
+                        // Create bounding box element
+                        const box = document.createElement('div');
+                        box.className = 'face-bounding-box';
+                        box.style.position = 'absolute';
+                        box.style.top = `${scaledTop}px`;
+                        box.style.left = `${scaledLeft}px`;
+                        box.style.width = `${scaledWidth}px`;
+                        box.style.height = `${scaledHeight}px`;
+                        box.style.border = '2px solid red';
+                        box.style.boxSizing = 'border-box';
+                        box.style.pointerEvents = 'none'; // Allow clicks to pass through
+                        
+                        // Add the box to the overlay
+                        overlay.appendChild(box);
+                        console.log(`Drew bounding box ${index} at: top=${scaledTop}, left=${scaledLeft}, width=${scaledWidth}, height=${scaledHeight}`);
+                    }
+                });
+                
+                console.log('=== Drawing face bounding boxes complete ===');
+            } catch (error) {
+                console.error('Error in animation frame:', error);
+            } finally {
+                // Reset animation frame ID
+                this._animationFrameId = null;
+            }
+        });
     }
     
     async saveData() {

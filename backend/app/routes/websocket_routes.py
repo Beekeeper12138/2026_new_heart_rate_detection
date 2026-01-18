@@ -34,7 +34,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 frame = face_service.decode_image(data)
                 
                 # Detect faces and extract ROIs
-                frame_with_boxes, rois = face_service.process_frame(frame)
+                frame_with_boxes, rois, face_locations, processing_resolution = face_service.process_frame(frame)
                 
                 # Calculate heart rate for each face
                 heart_rates = rppg_service.process_multiple_rois(rois)
@@ -46,16 +46,36 @@ async def websocket_endpoint(websocket: WebSocket):
                 if len(processed_signal) < 10:
                     processed_signal = np.array(rppg_service.signal_buffer)
                 
-                # Prepare response data
+                # Convert face locations to Python integers to avoid JSON serialization error
+                # Ensure all coordinates are Python ints, not NumPy types
+                python_face_locations = []
+                for loc in face_locations:
+                    if loc and len(loc) == 4:
+                        # Convert each coordinate to Python int
+                        python_loc = [int(coord) for coord in loc]
+                        python_face_locations.append(python_loc)
+                
+                # Prepare response data - send face coordinates, heart rate data, and processing resolution
                 response = {
                     "status": "success",
-                    "heart_rates": [round(hr, 1) for hr in heart_rates],
-                    "num_faces": len(rois),
-                    "signal": processed_signal.tolist()[-50:]  # Send only last 50 points for visualization
+                    "heart_rates": [round(float(hr), 1) for hr in heart_rates],  # Ensure Python float
+                    "num_faces": int(len(rois)),  # Ensure Python int
+                    "signal": processed_signal.tolist()[-50:],  # Send only last 50 points for visualization
+                    "face_coordinates": python_face_locations,  # Send face coordinates as Python ints
+                    "processing_resolution": {
+                        "width": int(processing_resolution[0]),  # Ensure Python int
+                        "height": int(processing_resolution[1])  # Ensure Python int
+                    }
                 }
+                
+                # Debug: Check response structure
+                print(f"Response keys: {list(response.keys())}")
+                print(f"Number of faces detected: {len(rois)}")
+                print(f"Face coordinates: {face_locations}")
                 
                 # Send response back to client
                 await manager.send_json(response, websocket)
+                print("Response sent to client")
                 
             except Exception as e:
                 # Send error response
